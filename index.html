@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI-ready node sizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9EDF1; --panel:#F7F9FB; --ink:#17202B; --muted:#56657A; --line:#C9D2DC;
+  --weights:#2E5AA7; --kv:#C9820C; --over:#7C8A9B; --free:#DDE3EA; --bad:#B3261E; --ok:#2F7D4F; --focus:#2E5AA7;
+  --sel:#DCE6F5;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12171D; --panel:#1A2129; --ink:#E4E9EF; --muted:#98A6B6; --line:#2E3845;
+    --weights:#6F9BE8; --kv:#F0B04A; --over:#8795A6; --free:#242D38; --bad:#F2867C; --ok:#7CCB98; --focus:#8FB3F0; --sel:#22324A;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12171D; --panel:#1A2129; --ink:#E4E9EF; --muted:#98A6B6; --line:#2E3845;
+  --weights:#6F9BE8; --kv:#F0B04A; --over:#8795A6; --free:#242D38; --bad:#F2867C; --ok:#7CCB98; --focus:#8FB3F0; --sel:#22324A;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 "Barlow",system-ui,-apple-system,"Segoe UI",sans-serif}
+.num,.hero-num{font-family:"Barlow Condensed","Arial Narrow",system-ui,sans-serif}
+header.top{max-width:1240px;margin:0 auto;padding:28px 20px 8px}
+header.top h1{font:700 34px/1.05 "Barlow Condensed","Arial Narrow",sans-serif;margin:0;letter-spacing:.2px}
+header.top p{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.layout{max-width:1240px;margin:0 auto;padding:12px 20px 40px;display:grid;grid-template-columns:320px minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:1fr}}
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;position:sticky;top:calc(12px + env(safe-area-inset-top,0px))}
+@media (max-width:860px){.controls{position:static}}
+fieldset{border:0;margin:0 0 14px;padding:0}
+legend{font-weight:600;font-size:14px;margin-bottom:8px;padding:0}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px}
+input,select{width:100%;font:500 15px "Barlow",system-ui,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible,tr:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:500 13px "Barlow",sans-serif;border:0;background:transparent;color:var(--ink);padding:8px 4px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--weights)}
+details.arch summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
+.results{min-width:0}
+.verdict{padding:4px 0 10px}
+.hero-num{font-weight:700;font-size:clamp(34px,6vw,58px);line-height:1;margin:0}
+.verdict p{margin:8px 0 0;color:var(--muted);font-size:16px}
+.verdict.fail .hero-num{color:var(--bad)}
+.stack{margin:18px 0 6px}
+.stack-cap{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+.bar{position:relative;height:64px;background:var(--free);border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex}
+.bar .seg-w{background:var(--weights)} .bar .seg-k{background:var(--kv)} .bar .seg-o{background:var(--over)}
+.bar > div{height:100%;transition:width .35s ease}
+.bar .tick{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--panel);opacity:.9}
+.bar .limit{position:absolute;top:-1px;bottom:-1px;width:0;border-left:2px dashed var(--ink)}
+.bar.over{border-color:var(--bad)}
+@media (prefers-reduced-motion:reduce){.bar > div{transition:none}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:22px 0}
+.metrics div{background:var(--panel);padding:12px 14px}
+.metrics dt{font-size:13px;color:var(--muted)}
+.metrics dd{margin:2px 0 0;font:600 26px/1.1 "Barlow Condensed","Arial Narrow",sans-serif}
+.metrics dd small{font:500 14px "Barlow",sans-serif;color:var(--muted);margin-left:3px}
+.notes{margin:0 0 24px;padding-left:18px}
+.notes li{margin:4px 0;max-width:75ch}
+h3{font:600 20px/1.2 "Barlow Condensed","Arial Narrow",sans-serif;margin:8px 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:14px}
+th,td{text-align:right;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--muted);font-size:13px}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--bg)}
+tbody tr.sel{background:var(--sel)}
+tbody tr:last-child td{border-bottom:0}
+td.nofit{color:var(--bad);text-align:left}
+td .best{color:var(--ok);font-weight:600;margin-left:6px;font-size:12px}
+details.assume{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+details.assume summary{cursor:pointer;font-weight:600}
+details.assume li{margin:5px 0;max-width:78ch;color:var(--muted)}
+.hidden{display:none !important}
+.watermark{position:fixed;inset:0;z-index:50;pointer-events:none;opacity:.09;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='240'%3E%3Ctext x='210' y='128' text-anchor='middle' transform='rotate(-28 210 120)' font-family='Barlow Condensed,Arial Narrow,sans-serif' font-size='28' font-weight='700' fill='%237C8A9B'%3ESorin Amihalachioaie%3C/text%3E%3C/svg%3E");
+  background-repeat:repeat;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style>
+</head>
+<body>
+<div class="watermark" aria-hidden="true"></div>
+<header class="top">
+  <h1>AI-ready node sizer</h1>
+  <p>Size GPU nodes to serve or fine-tune a model. Every input recalculates the plan, and the table compares the same workload across GPU types.</p>
+</header>
+
+<main class="layout">
+<form class="controls" id="f" onsubmit="return false">
+  <fieldset>
+    <legend>Workload</legend>
+    <div class="seg" role="group" aria-label="Workload">
+      <button type="button" data-mode="serve" aria-pressed="true">Serve</button>
+      <button type="button" data-mode="lora" aria-pressed="false">LoRA tune</button>
+      <button type="button" data-mode="full" aria-pressed="false">Full tune</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Model</legend>
+    <label for="preset">Preset</label>
+    <select id="preset"></select>
+    <div class="row2">
+      <div><label for="params">Total params (B)</label><input id="params" type="number" min="0.1" step="0.1"></div>
+      <div><label for="active">Active params (B)</label><input id="active" type="number" min="0.1" step="0.1"></div>
+    </div>
+    <div id="precWrap">
+      <label for="prec">Weight precision</label>
+      <select id="prec"><option value="bf16">BF16 / FP16</option><option value="fp8" selected>FP8</option><option value="int4">INT4 (AWQ/GPTQ)</option></select>
+    </div>
+    <details class="arch">
+      <summary>Architecture</summary>
+      <div class="row2">
+        <div><label for="layers">Layers</label><input id="layers" type="number" min="1"></div>
+        <div><label for="kvHeads">KV heads</label><input id="kvHeads" type="number" min="1"></div>
+        <div><label for="headDim">Head dim</label><input id="headDim" type="number" min="1"></div>
+        <div><label for="hidden">Hidden size</label><input id="hidden" type="number" min="1"></div>
+      </div>
+      <p class="hint">Editing any value switches the preset to Custom.</p>
+    </details>
+  </fieldset>
+
+  <fieldset id="serveFields">
+    <legend>Traffic</legend>
+    <div class="row2">
+      <div><label for="users">Concurrent users</label><input id="users" type="number" min="1" value="64"></div>
+      <div><label for="target">Tokens/s per user</label><input id="target" type="number" min="1" value="20"></div>
+      <div><label for="prompt">Prompt tokens</label><input id="prompt" type="number" min="1" value="4096"></div>
+      <div><label for="output">Output tokens</label><input id="output" type="number" min="1" value="1024"></div>
+    </div>
+    <label for="kvPrec">KV cache precision</label>
+    <select id="kvPrec"><option value="fp16">FP16</option><option value="fp8" selected>FP8</option></select>
+  </fieldset>
+
+  <fieldset id="trainFields" class="hidden">
+    <legend>Training run</legend>
+    <div class="row2">
+      <div><label for="seq">Sequence length</label><input id="seq" type="number" min="128" value="4096"></div>
+      <div><label for="mb">Micro-batch per GPU</label><input id="mb" type="number" min="1" value="1"></div>
+      <div><label for="tokens">Dataset tokens (M)</label><input id="tokens" type="number" min="1" value="500"></div>
+      <div><label for="epochs">Epochs</label><input id="epochs" type="number" min="1" value="2"></div>
+    </div>
+    <label for="deadline">Finish within (hours)</label><input id="deadline" type="number" min="1" value="24">
+  </fieldset>
+
+  <fieldset>
+    <legend>Node</legend>
+    <label for="gpu">GPU</label>
+    <select id="gpu"></select>
+    <div class="row2">
+      <div><label for="gpn">GPUs per node</label><select id="gpn"><option>1</option><option>2</option><option>4</option><option selected>8</option></select></div>
+      <div><label for="host">Host power (kW)</label><input id="host" type="number" min="0" step="0.1" value="2.5"></div>
+    </div>
+    <label for="util">Usable GPU memory: <span id="utilOut">90%</span></label>
+    <input id="util" type="range" min="70" max="95" value="90">
+  </fieldset>
+</form>
+
+<section class="results" aria-live="polite">
+  <div class="verdict" id="verdict"><p class="hero-num" id="heroNum"></p><p id="heroSub"></p></div>
+
+  <div class="stack">
+    <div class="stack-cap"><span id="stackTitle"></span><span id="stackFill"></span></div>
+    <div class="bar" id="bar"><div class="seg-w" id="bw"></div><div class="seg-k" id="bk"></div><div class="seg-o" id="bo"></div></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <dl class="metrics" id="metrics"></dl>
+  <ul class="notes" id="notes"></ul>
+
+  <h3>Same workload on every GPU</h3>
+  <p class="sub">Select a row to switch the plan to that GPU.</p>
+  <div class="table-wrap"><table id="cmp"><thead></thead><tbody></tbody></table></div>
+
+  <details class="assume">
+    <summary>How the numbers are estimated</summary>
+    <ul>
+      <li>Weights: parameters × bytes (BF16 2, FP8 1, INT4 0.5). Runtime overhead: 5% of weights plus 2.5 GB per GPU for CUDA context, graphs and activations.</li>
+      <li>KV cache per token: 2 × layers × KV heads × head dim × KV bytes, reserved for the full prompt + output window for every concurrent user.</li>
+      <li>Decode is treated as memory-bandwidth bound at 70% of peak. Each step reads the weights once (for MoE, the share of experts a batch touches) plus every user's KV cache.</li>
+      <li>Prefill (time to first token) uses 45% of dense peak TFLOPS, FP8 where the weights are FP8/INT4 and the GPU supports it. Queueing is not modeled.</li>
+      <li>Tensor parallel penalty: 8% over NVLink, 25% over PCIe, another 30% when one replica spans nodes.</li>
+      <li>Fine-tuning assumes FSDP / ZeRO-3 sharding with activation checkpointing. Full tuning keeps 16 bytes per parameter (BF16 weights and gradients, FP32 master copy and Adam states). LoRA keeps frozen weights at the chosen precision plus adapters at 1% of parameters. Training throughput assumes 40% MFU.</li>
+      <li>GPU specs are approximate public dense figures (no sparsity) and can differ by SKU, clocks and form factor. Confirm against vendor datasheets and your server's supported configuration before ordering.</li>
+    </ul>
+  </details>
+</section>
+</main>
+
+<script>
+const GPUS=[
+ {id:'l40s',name:'L40S 48GB',mem:48,bw:0.864,bf16:362,fp8:733,tdp:350,link:'pcie'},
+ {id:'rtx6k',name:'RTX PRO 6000 Blackwell 96GB',mem:96,bw:1.6,bf16:500,fp8:1000,tdp:600,link:'pcie'},
+ {id:'a100',name:'A100 SXM 80GB',mem:80,bw:2.04,bf16:312,fp8:312,tdp:400,link:'nvlink'},
+ {id:'h100nvl',name:'H100 NVL 94GB',mem:94,bw:3.9,bf16:835,fp8:1670,tdp:400,link:'pair'},
+ {id:'h100',name:'H100 SXM 80GB',mem:80,bw:3.35,bf16:989,fp8:1979,tdp:700,link:'nvlink'},
+ {id:'h200',name:'H200 SXM 141GB',mem:141,bw:4.8,bf16:989,fp8:1979,tdp:700,link:'nvlink'},
+ {id:'b200',name:'B200 180GB',mem:180,bw:8.0,bf16:2250,fp8:4500,tdp:1000,link:'nvlink'},
+ {id:'b300',name:'B300 288GB',mem:288,bw:8.0,bf16:2250,fp8:4500,tdp:1100,link:'nvlink'}
+];
+const MODELS={
+ 'llama31-8b':{label:'Llama 3.1 8B',params:8.0,active:8.0,layers:32,kvHeads:8,headDim:128,hidden:4096},
+ 'qwen3-32b':{label:'Qwen3 32B',params:32.8,active:32.8,layers:64,kvHeads:8,headDim:128,hidden:5120},
+ 'llama33-70b':{label:'Llama 3.3 70B',params:70.6,active:70.6,layers:80,kvHeads:8,headDim:128,hidden:8192},
+ 'gptoss-120b':{label:'gpt-oss-120b (MoE)',params:117,active:5.1,layers:36,kvHeads:8,headDim:64,hidden:2880},
+ 'llama31-405b':{label:'Llama 3.1 405B',params:405,active:405,layers:126,kvHeads:8,headDim:128,hidden:16384},
+ 'deepseek-v3':{label:'DeepSeek-V3 / R1 671B (MoE)',params:671,active:37,layers:61,kvHeads:1,headDim:288,hidden:7168},
+ 'custom':{label:'Custom'}
+};
+const WB={bf16:2,fp8:1,int4:0.5}, KVB={fp16:2,fp8:1};
+const $=id=>document.getElementById(id);
+let mode='serve';
+
+$('preset').innerHTML=Object.entries(MODELS).map(([k,m])=>`<option value="${k}">${m.label}</option>`).join('');
+$('gpu').innerHTML=GPUS.map(g=>`<option value="${g.id}">${g.name}</option>`).join('');
+$('preset').value='llama33-70b'; $('gpu').value='h200';
+const ARCH=['params','active','layers','kvHeads','headDim','hidden'];
+function applyPreset(){const m=MODELS[$('preset').value]; if(!m.params) return; ARCH.forEach(k=>$(k).value=m[k]);}
+applyPreset();
+
+const num=id=>Math.max(0,parseFloat($(id).value)||0);
+function state(){
+  const s={mode,prec:$('prec').value,kvPrec:$('kvPrec').value,gpn:+$('gpn').value,util:num('util')/100,host:num('host')};
+  ['params','active','layers','kvHeads','headDim','hidden','users','target','prompt','output','seq','mb','tokens','epochs','deadline'].forEach(k=>s[k]=num(k));
+  s.params=Math.max(s.params,0.1); s.active=Math.min(Math.max(s.active,0.1),s.params);
+  s.users=Math.max(1,Math.round(s.users)); s.target=Math.max(0.1,s.target);
+  ['layers','kvHeads','headDim','hidden','prompt','output','seq','mb','epochs'].forEach(k=>s[k]=Math.max(1,s[k]));
+  s.deadline=Math.max(0.1,s.deadline); s.tokens=Math.max(1,s.tokens);
+  return s;
+}
+const kvPerTok=s=>2*s.layers*s.kvHeads*s.headDim*KVB[s.kvPrec];
+function tpPenalty(g,tp,gpn){let p=1; if(tp>1){p*=(g.link==='pcie'||(g.link==='pair'&&tp>2))?1.25:1.08;} if(tp>gpn)p*=1.3; return p;}
+function nodesFor(tp,R,gpn){return tp<=gpn?Math.ceil(tp*R/gpn):R*Math.ceil(tp/gpn);}
+
+function sizeServe(s,g){
+  const b=WB[s.prec], W=s.params*b, a=s.active/s.params, kvt=kvPerTok(s);
+  const ctx=s.prompt+s.output, avgCtx=s.prompt+s.output/2, kvUser=kvt*ctx/1e9;
+  const tflops=(s.prec!=='bf16')?g.fp8:g.bf16;
+  let best=null, memFits=false;
+  for(const tp of [1,2,4,8,16,32,64]){
+    const cap=tp*g.mem*s.util, over=0.05*W+2.5*tp, room=cap-W-over;
+    if(room<kvUser) continue;
+    memFits=true;
+    const maxU=Math.floor(room/kvUser), pen=tpPenalty(g,tp,s.gpn), minR=Math.ceil(s.users/maxU);
+    let found=null;
+    for(let R=minR;R<=s.users;R++){
+      const u=Math.ceil(s.users/R);
+      if(R>minR && Math.ceil(s.users/(R-1))===u) continue;
+      const readP=s.params*(1-Math.pow(1-a,u));
+      const step=(readP*1e9*b+kvt*avgCtx*u)/(tp*g.bw*1e12*0.7)*pen;
+      if(1/step>=s.target){found={R,u,tps:1/step};break;}
+    }
+    if(!found) continue;
+    const gpus=tp*found.R;
+    if(best && gpus>=best.gpus) continue;
+    best={ok:true,tp,R:found.R,u:found.u,gpus,tps:found.tps,agg:found.tps*s.users,
+      ttft:2*s.active*1e9*s.prompt/(tp*tflops*1e12*0.45)*pen,W,kv:kvUser*found.u,kvUser,over,cap:tp*g.mem,usable:cap,
+      nodes:nodesFor(tp,found.R,s.gpn),cross:tp>s.gpn,pen};
+  }
+  if(!best) return {ok:false,reason:memFits?'speed':'memory',W};
+  best.installed=best.nodes*s.gpn;
+  best.kw=(best.installed*g.tdp/1000)+best.nodes*s.host;
+  return best;
+}
+
+function sizeTrain(s,g){
+  const full=s.mode==='full';
+  const states=full?s.params*16:s.params*WB[s.prec]+s.params*0.01*16;
+  const act=s.mb*s.seq*s.hidden*(2*s.layers+34)/1e9, over=3, usable=g.mem*s.util;
+  if(act+over>=usable) return {ok:false,reason:'act',states,act};
+  let Nmem=Math.ceil(states/(usable-act-over));
+  const flops=(full?6:4)*s.active*1e9*s.tokens*1e6*s.epochs;
+  const perGpu=g.bf16*1e12*0.4;
+  let Ntime=Math.ceil(flops/(s.deadline*3600*perGpu));
+  let N=Math.max(Nmem,Ntime,1);
+  if(N>s.gpn) N=Math.ceil(N/s.gpn)*s.gpn;
+  if(N>4096) return {ok:false,reason:'scale',states,act};
+  const cross=N>s.gpn;
+  const hours=flops/(N*perGpu)/3600*(cross?1.1:1);
+  const nodes=Math.ceil(N/s.gpn), installed=nodes*s.gpn;
+  return {ok:true,N,gpus:N,Nmem,Ntime,nodes,installed,hours,cross,states,shard:states/N,act,over,cap:g.mem,usable,
+    kw:installed*g.tdp/1000+nodes*s.host,full};
+}
+
+const f=(n,d=0)=>Number(n).toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d});
+const f1=n=>n<10?f(n,1):f(n);
+function dur(h){if(h<1)return [f(h*60),'min'];if(h<72)return [f1(h),'h'];return [f1(h/24),'days'];}
+
+function render(){
+  const s=state(), g=GPUS.find(x=>x.id===$('gpu').value);
+  $('utilOut').textContent=Math.round(s.util*100)+'%';
+  const serve=s.mode==='serve';
+  $('serveFields').classList.toggle('hidden',!serve);
+  $('trainFields').classList.toggle('hidden',serve);
+  $('precWrap').classList.toggle('hidden',s.mode==='full');
+  const r=serve?sizeServe(s,g):sizeTrain(s,g);
+  const v=$('verdict'), notes=[], model=MODELS[$('preset').value].label;
+  v.classList.toggle('fail',!r.ok);
+
+  if(!r.ok){
+    $('heroNum').textContent=serve&&r.reason==='speed'?'Target speed not reachable':'Does not fit';
+    $('heroSub').textContent=serve
+      ? (r.reason==='speed'?`Memory fits, but no layout of ${g.name} reaches ${f(s.target)} tokens/s per user. Lower the target, use lower precision or pick a GPU with more bandwidth.`
+                           :`${model} does not fit even across 64 × ${g.name} per replica. Lower precision, shorten the context or choose a larger GPU.`)
+      : (r.reason==='act'?`Activations for one micro-batch exceed a single ${g.name}. Shorten the sequence or lower the micro-batch.`
+                         :`This run needs more than 4,096 GPUs. Extend the deadline or reduce the dataset.`);
+    $('bar').classList.add('over'); ['bw','bk','bo'].forEach(id=>$(id).style.width='0');
+    $('bar').querySelectorAll('.tick,.limit').forEach(e=>e.remove());
+    $('stackTitle').textContent=''; $('stackFill').textContent=''; $('legend').innerHTML='';
+    $('metrics').innerHTML=''; $('notes').innerHTML='';
+  } else {
+    $('bar').classList.remove('over');
+    const gpuWord=r.gpus===1?'GPU':'GPUs', nodeWord=r.nodes===1?'node':'nodes';
+    $('heroNum').textContent=`${r.gpus} × ${g.name.split(' ')[0]} in ${r.nodes} ${nodeWord}`;
+    let segs, total, ticks, title;
+    if(serve){
+      $('heroSub').textContent=`${model} at ${s.prec.toUpperCase()}: ${r.R} replica${r.R>1?'s':''}, each on ${r.tp} ${r.tp>1?'GPUs with tensor parallel':'GPU'}, serving about ${r.u} user${r.u>1?'s':''} each.`;
+      segs=[r.W,r.kv,r.over]; total=r.cap; ticks=r.tp; title=`Memory for one replica (${r.tp} × ${g.mem} GB)`;
+      const [tv,tu]=r.ttft<1?[f(r.ttft*1000),'ms']:[f(r.ttft,1),'s'];
+      $('metrics').innerHTML=[
+        ['Tokens/s per user',f1(r.tps),''],['Aggregate tokens/s',f(r.agg),''],['Time to first token',tv,tu],
+        ['KV cache per user',f(r.kvUser,2),'GB'],['GPUs installed',r.installed,`in ${r.nodes} ${nodeWord}`],['Node power',f(r.kw,1),'kW']
+      ].map(m=>`<div><dt>${m[0]}</dt><dd>${m[1]}<small>${m[2]}</small></dd></div>`).join('');
+      if(r.cross) notes.push(`One replica spans ${Math.ceil(r.tp/s.gpn)} nodes. That needs pipeline parallel across hosts and a 400G RDMA fabric (GPUDirect RDMA) between them.`);
+      if(r.tp>1&&g.link==='pcie') notes.push(`${g.name} has no NVLink, so tensor-parallel traffic crosses PCIe. The estimate applies a 25% penalty; real scaling depends on the PCIe switch topology.`);
+      if(r.tp>2&&g.link==='pair') notes.push(`H100 NVL bridges only pairs of GPUs; ${r.tp}-way tensor parallel sends traffic between pairs over PCIe.`);
+      if(r.installed>r.gpus) notes.push(`${r.installed-r.gpus} GPU${r.installed-r.gpus>1?'s':''} stay free in the installed nodes: room for embedding, reranker or guardrail models, or failover headroom.`);
+      if(r.tp===1&&(r.W+r.kv+r.over)<0.45*g.mem) notes.push(`A replica uses under half of one ${g.mem} GB GPU. A fractional vGPU profile (or MIG on supported GPUs) would pack more replicas per card.`);
+      if(s.prec==='int4') notes.push('INT4 weights save memory but can cost accuracy. Validate on your own evals before committing capacity.');
+      if(s.active<s.params) notes.push('MoE model: memory is sized for all experts, while decode speed depends on the experts a batch actually touches.');
+    } else {
+      $('heroSub').textContent=`${s.mode==='full'?'Full fine-tune':'LoRA fine-tune'} of ${model}, FSDP-sharded across ${r.N} ${gpuWord}.`;
+      segs=[r.shard,r.act,r.over]; total=r.cap; ticks=1; title=`Memory per GPU (${g.mem} GB)`;
+      const [dv,du]=dur(r.hours);
+      $('metrics').innerHTML=[
+        ['Time to train',dv,du],['GPUs to fit in memory',r.Nmem,''],['GPUs to meet deadline',Math.max(r.Ntime,1),''],
+        ['Model states total',f(r.states),'GB'],['GPUs installed',r.installed,`in ${r.nodes} ${nodeWord}`],['Node power',f(r.kw,1),'kW']
+      ].map(m=>`<div><dt>${m[0]}</dt><dd>${m[1]}<small>${m[2]}</small></dd></div>`).join('');
+      if(r.cross) notes.push('The run spans nodes, so gradient and parameter traffic crosses the fabric. Plan 400G RDMA per GPU (GPUDirect RDMA) for efficient scaling.');
+      if(r.Ntime>r.Nmem) notes.push(`The deadline, not memory, drives the GPU count. With ${Math.max(r.Nmem,1)} GPU${r.Nmem>1?'s':''} the run would take about ${dur(r.hours*r.N/Math.max(r.Nmem,1)).join(' ')}.`);
+      if(g.link==='pcie'&&r.N>1) notes.push(`${g.name} has no NVLink, so FSDP all-gathers run over PCIe and the network. Expect lower efficiency than the 40% MFU assumed.`);
+      if(s.mode==='lora'&&s.prec==='int4') notes.push('INT4 base weights with LoRA is the QLoRA pattern. It fits in less memory but runs slower per step.');
+    }
+    const pct=x=>Math.min(100,x/total*100)+'%';
+    $('bw').style.width=pct(segs[0]); $('bk').style.width=pct(segs[1]); $('bo').style.width=pct(segs[2]);
+    $('bar').querySelectorAll('.tick,.limit').forEach(e=>e.remove());
+    for(let i=1;i<ticks&&ticks<=64;i++){const t=document.createElement('span');t.className='tick';t.style.left=(i/ticks*100)+'%';$('bar').appendChild(t);}
+    const lim=document.createElement('span');lim.className='limit';lim.style.left=(s.util*100)+'%';lim.title='Usable memory limit';$('bar').appendChild(lim);
+    const used=segs.reduce((a,b)=>a+b,0);
+    $('stackTitle').textContent=title;
+    $('stackFill').textContent=`${f(used)} of ${f(total)} GB used (${f(used/total*100)}%)`;
+    const second=serve?`KV cache (${r.u} users)`:'Activations';
+    const first=serve?'Weights':(s.mode==='full'?'Weights, grads, optimizer (shard)':'Weights + adapters (shard)');
+    $('legend').innerHTML=`<span><i style="background:var(--weights)"></i>${first} ${f(segs[0],1)} GB</span><span><i style="background:var(--kv)"></i>${second} ${f(segs[1],1)} GB</span><span><i style="background:var(--over)"></i>Runtime overhead ${f(segs[2],1)} GB</span><span><i style="border:2px dashed var(--ink);width:0;height:12px;border-radius:0"></i>Usable limit</span>`;
+    $('notes').innerHTML=notes.map(n=>`<li>${n}</li>`).join('');
+  }
+  renderTable(s,g.id);
+}
+
+function renderTable(s,sel){
+  const serve=s.mode==='serve';
+  $('cmp').querySelector('thead').innerHTML=serve
+    ?'<tr><th>GPU</th><th>GPUs</th><th>Nodes</th><th>TP × replicas</th><th>Tok/s per user</th><th>First token</th><th>Power</th></tr>'
+    :'<tr><th>GPU</th><th>GPUs</th><th>Nodes</th><th>Per-GPU memory</th><th>Time to train</th><th>Power</th></tr>';
+  const rows=GPUS.map(g=>({g,r:serve?sizeServe(s,g):sizeTrain(s,g)}));
+  const fits=rows.filter(x=>x.r.ok);
+  const minG=fits.length?Math.min(...fits.map(x=>x.r.gpus)):null;
+  const minKw=fits.length?Math.min(...fits.map(x=>x.r.kw)):null;
+  $('cmp').querySelector('tbody').innerHTML=rows.map(({g,r})=>{
+    const cls=g.id===sel?' class="sel"':'';
+    if(!r.ok) return `<tr data-id="${g.id}" tabindex="0"${cls}><td>${g.name}</td><td class="nofit" colspan="${serve?6:5}">${serve&&r.reason==='speed'?'Misses speed target':'Does not fit'}</td></tr>`;
+    const tags=(r.gpus===minG?'<span class="best">fewest GPUs</span>':'')+(r.kw===minKw?'<span class="best">lowest power</span>':'');
+    const kw=`${f(r.kw,1)} kW`;
+    if(serve){const t=r.ttft<1?f(r.ttft*1000)+' ms':f(r.ttft,1)+' s';
+      return `<tr data-id="${g.id}" tabindex="0"${cls}><td>${g.name}${tags}</td><td>${r.gpus}</td><td>${r.nodes}</td><td>${r.tp} × ${r.R}</td><td>${f1(r.tps)}</td><td>${t}</td><td>${kw}</td></tr>`;}
+    return `<tr data-id="${g.id}" tabindex="0"${cls}><td>${g.name}${tags}</td><td>${r.gpus}</td><td>${r.nodes}</td><td>${f(r.shard+r.act+r.over)} / ${g.mem} GB</td><td>${dur(r.hours).join(' ')}</td><td>${kw}</td></tr>`;
+  }).join('');
+}
+
+$('cmp').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(tr){$('gpu').value=tr.dataset.id;render();}});
+$('cmp').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const tr=e.target.closest('tr[data-id]');if(tr){e.preventDefault();$('gpu').value=tr.dataset.id;render();}}});
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{
+  mode=b.dataset.mode; document.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===b)); render();}));
+$('preset').addEventListener('change',()=>{applyPreset();render();});
+ARCH.forEach(k=>$(k).addEventListener('input',()=>{$('preset').value='custom';}));
+$('f').addEventListener('input',render);
+$('f').addEventListener('change',render);
+render();
+</script>
+</body>
+</html>
